@@ -3,639 +3,1087 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>เกม AR ฝึกพูดคำศัพท์คอมพิวเตอร์</title>
+    <title>AR ยิงธนูสู้คำกริยา</title>
+    <!-- Google Font Mitr -->
+    <link href="https://fonts.googleapis.com/css2?family=Mitr:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Google Font: Mitr -->
-    <link href="https://fonts.googleapis.com/css2?family=Mitr:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <!-- FontAwesome for Icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Canvas Confetti -->
-    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
-    <!-- MediaPipe Face Mesh -->
+    <!-- Three.js CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- MediaPipe Hands CDN -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
-
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    
     <style>
         body {
             font-family: 'Mitr', sans-serif;
-            touch-action: manipulation;
+            user-select: none;
+            -webkit-user-select: none;
+            overflow: hidden;
+            background-color: #0f172a;
         }
         .glass-panel {
-            background: rgba(255, 255, 255, 0.85);
+            background: rgba(15, 23, 42, 0.75);
             backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.15);
         }
-        .mirror {
-            transform: scaleX(-1);
+        .btn-press:active {
+            transform: scale(0.95);
         }
-        @keyframes pulse-slow {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.05); }
+        @keyframes fadeInOut {
+            0% { opacity: 0; transform: translate(-50%, -20px) scale(0.8); }
+            20% { opacity: 1; transform: translate(-50%, 0) scale(1.1); }
+            80% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+            100% { opacity: 0; transform: translate(-50%, -30px) scale(0.9); }
         }
-        .animate-pulse-slow {
-            animation: pulse-slow 2s infinite ease-in-out;
+        .popup-anim {
+            animation: fadeInOut 1s ease-in-out forwards;
+        }
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0,0,0,0.2);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.3);
+            border-radius: 4px;
         }
     </style>
 </head>
-<body class="h-screen w-screen overflow-hidden bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex flex-col items-center justify-center p-2 md:p-4">
+<body class="relative w-screen h-screen overflow-hidden text-white">
 
-    <div id="start-screen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
-        <div class="glass-panel rounded-3xl p-6 md:p-10 max-w-lg w-full text-center shadow-2xl transform transition-all animate-pulse-slow">
-            <div class="w-20 h-20 bg-gradient-to-tr from-indigo-500 to-pink-500 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg text-white text-3xl">
-                <i class="fa-solid fa-laptop-code"></i>
+    <!-- Video background for AR Camera -->
+    <video id="webcam" class="absolute inset-0 w-full h-full object-cover -scale-x-100 z-0" autoplay playsinline muted></video>
+    
+    <!-- Three.js Canvas container -->
+    <div id="canvas-container" class="absolute inset-0 z-10 pointer-events-none"></div>
+
+    <!-- 2D DOM Fruit Labels Container -->
+    <div id="labels-container" class="absolute inset-0 z-20 pointer-events-none overflow-hidden"></div>
+
+    <!-- UI Layout Divider Visualizer -->
+    <div class="absolute inset-0 z-5 pointer-events-none flex">
+        <div class="w-1/4 h-full border-r border-amber-400/30 bg-amber-500/5 relative">
+            <span class="absolute top-4 left-4 text-xs tracking-wider text-amber-300/80 bg-black/40 px-3 py-1 rounded-full border border-amber-400/20">โซนผลไม้ตกลงมา (1/4 ซ้าย)</span>
+        </div>
+        <div class="w-3/4 h-full bg-emerald-500/5 relative border-l border-emerald-400/20">
+            <div class="absolute left-0 top-0 bottom-0 w-1/3 border-r border-dashed border-emerald-400/30">
+                <span class="absolute top-4 left-4 text-xs tracking-wider text-emerald-300/80 bg-black/40 px-3 py-1 rounded-full border border-emerald-400/20">โซนผู้เล่นขวา (ล็อกคันธนูไม่ให้ล้น)</span>
             </div>
-            <h1 class="text-3xl md:text-4xl font-bold text-gray-800 mb-2">AR พูดคอมพิวเตอร์b</h1>
-            <p class="text-gray-600 text-sm md:text-base mb-6">ฝึกออกเสียงคำศัพท์คอมพิวเตอร์ สนุกกับเอฟเฟกต์ AR บนใบหน้า พร้อมสะสมคะแนนกันเลย!</p>
-            <div class="bg-blue-50 border border-blue-200 text-blue-700 text-xs md:text-sm rounded-xl p-3 mb-6 text-left">
-                <i class="fa-solid fa-circle-info mr-1"></i> ระบบจะขออนุญาตใช้งาน <strong>กล้อง (Camera)</strong> และ <strong>ไมโครโฟน (Microphone)</strong> เพื่อเริ่มเล่นเกม
+        </div>
+    </div>
+
+    <!-- IN-GAME UI / HUD -->
+    <div id="game-ui" class="absolute inset-0 z-30 pointer-events-none flex flex-col justify-between p-4">
+        <!-- Top HUD Header -->
+        <div class="flex flex-row justify-between items-center gap-2 w-full">
+            <!-- Score Box -->
+            <div class="glass-panel px-4 py-2 rounded-2xl shadow-xl flex items-center gap-3 border border-white/20">
+                <div class="text-2xl">🏆</div>
+                <div>
+                    <p class="text-[10px] text-slate-400 font-medium tracking-wide">คะแนน</p>
+                    <p id="hud-score" class="text-xl font-bold text-amber-400">0</p>
+                </div>
             </div>
-            <button id="start-btn" class="w-full py-4 bg-gradient-to-r from-indigo-600 to-pink-600 hover:from-indigo-700 hover:to-pink-700 text-white font-bold text-lg rounded-2xl shadow-xl transform transition active:scale-95 flex items-center justify-center gap-2">
-                <i class="fa-solid fa-play"></i> เริ่มต้นเล่นเกม
+
+            <!-- Time Box -->
+            <div class="glass-panel px-4 py-2 rounded-2xl shadow-xl flex items-center gap-3 border border-white/20">
+                <div class="text-2xl">⏱️</div>
+                <div>
+                    <p class="text-[10px] text-slate-400 font-medium tracking-wide">เวลา</p>
+                    <p id="hud-time" class="text-xl font-bold text-cyan-300">00:00</p>
+                </div>
+            </div>
+
+            <!-- Question Box -->
+            <div class="glass-panel px-4 py-2 rounded-2xl shadow-xl flex items-center gap-3 border border-white/20">
+                <div class="text-2xl">🎯</div>
+                <div>
+                    <p class="text-[10px] text-slate-400 font-medium tracking-wide">ข้อที่</p>
+                    <p id="hud-question" class="text-xl font-bold text-pink-400">1/15</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sub-header Message Notification & Start Button underneath timer -->
+        <div class="self-center mt-2 flex flex-col items-center gap-2 pointer-events-auto">
+            <div class="glass-panel px-5 py-1.5 rounded-full shadow-lg border border-white/20 flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <div id="hud-message" class="text-xs font-semibold text-white">พร้อมแล้วกดเริ่มเกมด้านล่างได้เลย!</div>
+            </div>
+            <!-- Start Game Button positioned right underneath the timer/message area -->
+            <button id="btn-start-game" class="px-6 py-2.5 bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-white font-bold text-sm rounded-2xl shadow-xl transition-all transform hover:scale-105 btn-press border border-white/20 flex items-center gap-2">
+                <span>🚀</span> เริ่มเกมยิงธนู
             </button>
         </div>
+
+        <!-- Center Large Popup Message Container -->
+        <div id="popup-container" class="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-40"></div>
+
+        <!-- Vertical Power Charge Bar Widget on the Right -->
+        <div id="power-bar-container" class="absolute right-6 top-1/2 -translate-y-1/2 glass-panel p-3 rounded-2xl border border-white/20 shadow-2xl flex flex-col items-center gap-2 transition-opacity duration-200 opacity-0 pointer-events-none z-30">
+            <span id="power-percent-text" class="text-xs font-bold text-cyan-300">0%</span>
+            <div class="w-6 h-40 bg-slate-900/90 rounded-xl p-1 border border-slate-700/80 flex flex-col justify-end overflow-hidden">
+                <div id="power-bar-fill" class="w-full bg-gradient-to-t from-amber-500 via-emerald-500 to-cyan-400 rounded-lg transition-all duration-75" style="height: 0%;"></div>
+            </div>
+        </div>
+
+        <!-- Bottom Controls & Side Menu -->
+        <div class="flex justify-between items-end pb-2">
+            <!-- Left instructions -->
+            <div class="glass-panel px-4 py-2 rounded-xl text-xs text-slate-300 max-w-xs space-y-0.5 pointer-events-auto">
+                <p>💡 <span class="text-amber-300 font-medium">วิธีเล่น:</span> มือซ้ายคุมธนู | มือขวากำเพื่อดึง แบเพื่อยิง</p>
+                <p class="text-[10px] text-slate-400">ซ้าย: <span id="hand-left-status" class="text-red-400">ไม่พบมือ</span> | ขวา: <span id="hand-right-status" class="text-red-400">ไม่พบมือ</span></p>
+            </div>
+
+            <!-- Side Interactive Buttons -->
+            <div class="pointer-events-auto flex flex-col gap-2 bg-slate-950/85 backdrop-blur-md p-2.5 rounded-2xl border border-white/20 shadow-2xl">
+                <button id="btn-toggle-hands" class="px-3.5 py-2 rounded-xl font-medium text-xs flex items-center justify-between gap-3 transition-all bg-slate-800 hover:bg-slate-700 text-white shadow-md btn-press" title="สลับมือซ้าย/ขวา">
+                    <span class="flex items-center gap-1.5">🔄 สลับมือ:</span> <span id="txt-hands-mode" class="text-amber-300">ปกติ</span>
+                </button>
+                <button id="btn-toggle-landmarks" class="px-3.5 py-2 rounded-xl font-medium text-xs flex items-center justify-between gap-3 transition-all bg-slate-800 hover:bg-slate-700 text-white shadow-md btn-press" title="จุดมือ AI">
+                    <span class="flex items-center gap-1.5">✋ จุดมือ:</span> <span id="txt-landmarks" class="text-emerald-400">เปิด</span>
+                </button>
+                <button id="btn-toggle-sound" class="px-3.5 py-2 rounded-xl font-medium text-xs flex items-center justify-between gap-3 transition-all bg-slate-800 hover:bg-slate-700 text-white shadow-md btn-press" title="เปิด/ปิดเสียง">
+                    <span class="flex items-center gap-1.5">🔊 เสียง:</span> <span id="txt-sound" class="text-emerald-400">เปิด</span>
+                </button>
+                <button id="btn-restart" class="px-3.5 py-2 rounded-xl font-medium text-xs flex items-center justify-between gap-3 transition-all bg-rose-600 hover:bg-rose-500 text-white shadow-md btn-press">
+                    <span class="flex items-center gap-1.5">🔄 เริ่มใหม่</span>
+                </button>
+            </div>
+        </div>
     </div>
 
-    <div id="end-screen" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
-        <div class="glass-panel rounded-3xl p-6 md:p-10 max-w-lg w-full text-center shadow-2xl">
-            <div id="end-icon" class="w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-4 shadow-xl text-white text-4xl">
-                <i class="fa-solid fa-trophy"></i>
+    <!-- GAME OVER SCREEN -->
+    <div id="gameover-screen" class="absolute inset-0 z-50 hidden flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4">
+        <div class="glass-panel max-w-md w-full p-8 rounded-3xl shadow-2xl border border-white/20 flex flex-col items-center text-center">
+            <div class="text-5xl mb-3 animate-bounce">🏆</div>
+            <h2 class="text-3xl font-bold text-amber-300 mb-1">สรุปผลคะแนนเกม</h2>
+            <p class="text-slate-400 text-xs mb-6">AR ยิงธนูสู้คำกริยา</p>
+
+            <div class="w-full bg-slate-900/90 rounded-2xl p-5 mb-6 border border-slate-700/80 space-y-3 text-sm">
+                <div class="flex justify-between items-center">
+                    <span class="text-slate-400">คะแนนรวมทั้งหมด</span>
+                    <span id="final-score" class="text-2xl font-bold text-amber-400">0</span>
+                </div>
+                <div class="w-full h-px bg-slate-800"></div>
+                <div class="flex justify-between items-center text-xs">
+                    <span class="text-slate-400">ยิงคำกริยาถูกต้อง</span>
+                    <span id="final-correct" class="text-emerald-400 font-semibold">0 ข้อ</span>
+                </div>
+                <div class="flex justify-between items-center text-xs">
+                    <span class="text-slate-400">ยิงโดนคำนามหลอก</span>
+                    <span id="final-wrong" class="text-red-400 font-semibold">0 ครั้ง</span>
+                </div>
             </div>
-            <h2 id="end-title" class="text-3xl md:text-4xl font-bold text-gray-800 mb-2">สรุปผลการเล่น</h2>
-            <p id="end-subtitle" class="text-gray-600 text-base mb-4">ยอดเยี่ยมมาก! คุณทำคะแนนได้</p>
-            <div class="text-5xl font-extrabold text-indigo-600 mb-6" id="final-score-display">8/10</div>
-            <button id="restart-btn" class="w-full py-4 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-bold text-lg rounded-2xl shadow-xl transform transition active:scale-95 flex items-center justify-center gap-2">
-                <i class="fa-solid fa-rotate-right"></i> เล่นใหม่อีกครั้ง
+
+            <button id="btn-play-again" class="w-full py-4 bg-gradient-to-r from-amber-500 to-emerald-500 hover:from-amber-400 hover:to-emerald-400 text-white font-bold rounded-2xl shadow-lg transition-all transform hover:scale-[1.02] btn-press text-base">
+                🎮 เล่นใหม่อีกครั้ง
             </button>
         </div>
-    </div>
-
-    <div class="w-full h-full max-w-7xl max-h-[900px] flex flex-col md:flex-row gap-4 overflow-hidden rounded-3xl shadow-2xl border border-white/40 bg-white/20 backdrop-blur-md p-3 md:p-4">
-        
-        <!-- Left Side: Game UI & Controls -->
-        <div class="w-full md:w-1/2 flex flex-col justify-between glass-panel rounded-2xl p-4 md:p-6 shadow-lg relative overflow-hidden">
-            <!-- Header Info -->
-            <div class="flex items-center justify-between border-b border-gray-200/60 pb-3">
-                <div class="flex items-center gap-2">
-                    <span class="bg-indigo-100 text-indigo-700 font-bold px-3 py-1 rounded-full text-sm md:text-base shadow-sm">
-                        ข้อที่ <span id="current-q">1</span>/10
-                    </span>
-                </div>
-                <div class="flex items-center gap-2">
-                    <span class="bg-amber-100 text-amber-700 font-bold px-3 py-1 rounded-full text-sm md:text-base shadow-sm">
-                        <i class="fa-solid fa-star text-amber-500 mr-1"></i> คะแนน: <span id="total-score">0</span>
-                    </span>
-                </div>
-            </div>
-
-            <!-- Center Vocabulary Display -->
-            <div class="flex flex-col items-center justify-center my-auto py-4 text-center">
-                <div id="status-badge" class="mb-3 px-4 py-1.5 bg-gray-100 text-gray-600 rounded-full font-medium text-sm md:text-base shadow-inner transition-all">
-                    เตรียมตัว...
-                </div>
-                <h2 id="vocab-en" class="text-4xl md:text-6xl font-extrabold text-gray-800 tracking-wide drop-shadow-sm mb-2">COMPUTER</h2>
-                <p id="vocab-th" class="text-xl md:text-2xl font-medium text-gray-600 mb-4">(คอมพิวเตอร์)</p>
-                <div class="w-24 h-24 rounded-full bg-indigo-100 border-4 border-indigo-400 flex items-center justify-center text-3xl text-indigo-500 shadow-inner mb-2" id="mic-icon-container">
-                    <i id="mic-status-icon" class="fa-solid fa-microphone-slash"></i>
-                </div>
-                <p id="recognized-speech-text" class="text-sm text-gray-500 h-6 font-medium italic">พูดว่า...</p>
-            </div>
-
-            <!-- Bottom Accuracy Meter Bar -->
-            <div class="mt-auto">
-                <div class="flex justify-between items-center text-xs md:text-sm font-semibold text-gray-600 mb-1">
-                    <span>ระดับความแม่นยำ</span>
-                    <span id="accuracy-percent">0%</span>
-                </div>
-                <div class="w-full bg-gray-200 rounded-full h-4 overflow-hidden shadow-inner p-0.5">
-                    <div id="meter-bar" class="bg-gradient-to-r from-red-400 via-yellow-400 to-green-500 h-full rounded-full transition-all duration-300" style="width: 0%"></div>
-                </div>
-                <div id="feedback-message" class="text-center mt-3 font-semibold text-sm md:text-base text-gray-700 h-6">
-                    พร้อมแล้วลุยกันเลย!
-                </div>
-            </div>
-        </div>
-
-        <!-- Right Side: AR Camera Viewport -->
-        <div class="w-full md:w-1/2 h-64 md:h-full relative rounded-2xl overflow-hidden bg-black shadow-lg border border-white/40 flex items-center justify-center">
-            <!-- Hidden Video element for MediaPipe input -->
-            <video id="webcam" class="absolute inset-0 w-full h-full object-cover mirror opacity-0 pointer-events-none" autoplay playsinline muted></video>
-            <!-- Canvas for AR Overlays and Video rendering -->
-            <canvas id="output_canvas" class="absolute inset-0 w-full h-full object-cover mirror"></canvas>
-            
-            <!-- Floating Camera badge -->
-            <div class="absolute top-4 right-4 bg-black/40 backdrop-blur-md text-white px-3 py-1 rounded-full text-xs flex items-center gap-1.5 border border-white/20">
-                <span class="w-2 h-2 rounded-full bg-green-400 animate-ping"></span> AR Camera Active
-            </div>
-        </div>
-
-    </div>
-
-    <!-- Creator Tag Footer -->
-    <div class="absolute bottom-1 right-3 text-white/80 text-xs font-semibold drop-shadow-md pointer-events-none z-40">
-        ice 124
     </div>
 
     <script>
-        let audioCtx = null;
-
-        function initAudio() {
-            if (!audioCtx) {
-                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            }
-            if (audioCtx.state === 'suspended') {
-                audioCtx.resume();
-            }
-        }
-
-        function playTone(freq, type, duration, delay = 0) {
-            try {
-                initAudio();
-                setTimeout(() => {
-                    if (!audioCtx) return;
-                    const osc = audioCtx.createOscillator();
-                    const gain = audioCtx.createGain();
-                    osc.type = type;
-                    osc.frequency.value = freq;
-                    gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
-                    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
-                    osc.connect(gain);
-                    gain.connect(audioCtx.destination);
-                    osc.start();
-                    osc.stop(audioCtx.currentTime + duration);
-                }, delay);
-            } catch (e) {
-                console.error("Audio error:", e);
-            }
-        }
-
-        const SoundFX = {
-            click: () => playTone(600, 'sine', 0.08),
-            tick: () => playTone(440, 'sine', 0.1),
-            go: () => {
-                playTone(523.25, 'triangle', 0.15, 0);
-                playTone(659.25, 'triangle', 0.15, 100);
-                playTone(783.99, 'triangle', 0.3, 200);
-            },
-            correct: () => {
-                playTone(587.33, 'sine', 0.1, 0);
-                playTone(880, 'sine', 0.25, 120);
-            },
-            wrong: () => {
-                playTone(180, 'sawtooth', 0.2, 0);
-                playTone(140, 'sawtooth', 0.3, 150);
-            },
-            warning: () => {
-                playTone(300, 'square', 0.15, 0);
-                playTone(300, 'square', 0.15, 200);
-            },
-            fanfare: () => {
-                const notes = [523.25, 587.33, 659.25, 698.46, 783.99, 880, 987.77, 1046.50];
-                notes.forEach((n, idx) => {
-                    playTone(n, 'triangle', 0.2, idx * 100);
-                });
-            },
-            gameOver: () => {
-                const notes = [400, 350, 300, 250];
-                notes.forEach((n, idx) => {
-                    playTone(n, 'sawtooth', 0.25, idx * 150);
-                });
-            }
+        // --- CONFIGURATION & WORD DATASET ---
+        const CONFIG = {
+            totalQuestions: 15,
+            gravity: 0.004,
+            arrowSpeedMultiplier: 0.12,
         };
-    </script>
 
-    <script>
-        // Computer Vocabulary Dataset (10 Computer & Tech Words)
-        const vocabularyList = [
-            { en: "COMPUTER", th: "คอมพิวเตอร์" },
-            { en: "MOUSE", th: "เมาส์" },
-            { en: "KEYBOARD", th: "คีย์บอร์ด" },
-            { en: "MONITOR", th: "จอภาพ" },
-            { en: "WIFI", th: "ไวไฟ" },
-            { en: "CODE", th: "โค้ด" },
-            { en: "SCREEN", th: "หน้าจอ" },
-            { en: "LAPTOP", th: "แล็ปท็อป" },
-            { en: "MOUSEPAD", th: "แผ่นรองเมาส์" },
-            { en: "INTERNET", th: "อินเทอร์เน็ต" }
-        ];
+        const WORD_DATA = {
+            verbs: [
+                { word: "วิ่ง", type: "verb" },
+                { word: "กิน", type: "verb" },
+                { word: "อ่าน", type: "verb" },
+                { word: "เขียน", type: "verb" },
+                { word: "นอน", type: "verb" },
+                { word: "เดิน", type: "verb" },
+                { word: "กระโดด", type: "verb" },
+                { word: "ร้อง", type: "verb" },
+                { word: "ว่ายน้ำ", type: "verb" },
+                { word: "เต้น", type: "verb" },
+                { word: "ยิ้ม", type: "verb" },
+                { word: "หัวเราะ", type: "verb" }
+            ],
+            nouns: [
+                { word: "ครู", type: "noun" },
+                { word: "บ้าน", type: "noun" },
+                { word: "โรงเรียน", type: "noun" },
+                { word: "แมว", type: "noun" },
+                { word: "หนังสือ", type: "noun" },
+                { word: "โต๊ะ", type: "noun" },
+                { word: "ดินสอ", type: "noun" },
+                { word: "นักเรียน", type: "noun" },
+                { word: "ต้นไม้", type: "noun" },
+                { word: "รถ", type: "noun" },
+                { word: "ปลา", type: "noun" },
+                { word: "ข้าว", type: "noun" }
+            ]
+        };
 
-        let currentQuestionIndex = 0;
-        let score = 0;
-        let isGameRunning = false;
-        let currentARState = 'none'; // 'none', 'crown', 'horns'
-        let faceLandmarksData = null;
+        // --- GAME STATE ---
+        let gameState = {
+            status: 'IDLE', // IDLE until user clicks start
+            score: 0,
+            questionIndex: 1,
+            correctCount: 0,
+            wrongCount: 0,
+            startTime: 0,
+            elapsedTime: 0,
+            timerInterval: null,
+            soundEnabled: true,
+            landmarksEnabled: true,
+            swapHands: false,
+            cameraReady: false,
+            aiReady: false
+        };
 
-        // DOM Elements
-        const startScreen = document.getElementById('start-screen');
-        const endScreen = document.getElementById('end-screen');
-        const startBtn = document.getElementById('start-btn');
-        const restartBtn = document.getElementById('restart-btn');
-        const currentQEl = document.getElementById('current-q');
-        const totalScoreEl = document.getElementById('total-score');
-        const vocabEnEl = document.getElementById('vocab-en');
-        const vocabThEl = document.getElementById('vocab-th');
-        const statusBadge = document.getElementById('status-badge');
-        const micIconContainer = document.getElementById('mic-icon-container');
-        const micStatusIcon = document.getElementById('mic-status-icon');
-        const recognizedSpeechText = document.getElementById('recognized-speech-text');
-        const accuracyPercentEl = document.getElementById('accuracy-percent');
-        const meterBar = document.getElementById('meter-bar');
-        const feedbackMessage = document.getElementById('feedback-message');
-        const finalScoreDisplay = document.getElementById('final-score-display');
-        const endTitle = document.getElementById('end-title');
-        const endSubtitle = document.getElementById('end-subtitle');
-        const endIcon = document.getElementById('end-icon');
+        let handData = {
+            left: { detected: false, x: 0, y: 0, rawX: 0, rawY: 0 },
+            right: { detected: false, x: 0, y: 0, gesture: 'NONE' },
+            rightMissingTimer: null
+        };
 
-        // Speech Recognition Setup
-        let recognition = null;
-        let speechSupported = true;
-        try {
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if (SpeechRecognition) {
-                recognition = new SpeechRecognition();
-                recognition.lang = 'en-US';
-                recognition.interimResults = true;
-                recognition.maxAlternatives = 1;
-            } else {
-                speechSupported = false;
+        let bowState = {
+            isDrawing: false,
+            drawPower: 0,
+            lastPower: 0
+        };
+
+        let activeFruits = [];
+        let activeArrows = [];
+
+        // --- WEB AUDIO API SOUND ENGINE ---
+        class SoundEngine {
+            constructor() {
+                this.ctx = null;
             }
-        } catch (e) {
-            speechSupported = false;
+            init() {
+                if (!this.ctx) {
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioContext();
+                }
+                if (this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+            playTone(freq, type, duration, gainVal = 0.1) {
+                if (!gameState.soundEnabled || !this.ctx) return;
+                try {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = type;
+                    osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                    gain.gain.setValueAtTime(gainVal, this.ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + duration);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + duration);
+                } catch(e) { console.error(e); }
+            }
+            playButton() { this.playTone(600, 'sine', 0.1, 0.1); }
+            playToggle() { this.playTone(450, 'triangle', 0.12, 0.1); }
+            playGameStart() { 
+                this.playTone(523.25, 'triangle', 0.15, 0.15);
+                setTimeout(() => this.playTone(659.25, 'triangle', 0.15, 0.15), 150);
+                setTimeout(() => this.playTone(783.99, 'triangle', 0.3, 0.2), 300);
+            }
+            playDrawStart() { this.playTone(220, 'sawtooth', 0.2, 0.08); }
+            playCharge(power) { 
+                if (!gameState.soundEnabled || !this.ctx) return;
+                const freq = 150 + power * 400;
+                this.playTone(freq, 'sine', 0.08, 0.05);
+            }
+            playRelease() { this.playTone(300, 'sawtooth', 0.25, 0.15); }
+            playLowPower() { this.playTone(120, 'square', 0.2, 0.15); }
+            playCorrect() { 
+                this.playTone(587.33, 'sine', 0.15, 0.2);
+                setTimeout(() => this.playTone(880, 'sine', 0.3, 0.2), 150);
+            }
+            playWrong() { 
+                this.playTone(180, 'sawtooth', 0.2, 0.2);
+                setTimeout(() => this.playTone(130, 'sawtooth', 0.3, 0.2), 150);
+            }
+            playFall() { this.playTone(150, 'sine', 0.4, 0.15); }
+            playPin() { this.playTone(800, 'triangle', 0.1, 0.15); }
+            playNextQ() { this.playTone(600, 'sine', 0.2, 0.15); }
+            playGameOver() { 
+                this.playTone(440, 'triangle', 0.2, 0.2);
+                setTimeout(() => this.playTone(392, 'triangle', 0.2, 0.2), 200);
+                setTimeout(() => this.playTone(329.63, 'triangle', 0.4, 0.25), 400);
+            }
+        }
+        const sound = new SoundEngine();
+
+        // --- THREE.JS GRAPHICS SETUP ---
+        let scene, camera, renderer;
+        let bowMesh, bowStringMesh, arrowOnBowMesh, bowStringTriangleMesh;
+        let landmarkSpheres = { left: [], right: [] };
+        let canvasContainer = document.getElementById('canvas-container');
+
+        function initThreeJS() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 5;
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            canvasContainer.appendChild(renderer.domElement);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+            dirLight.position.set(5, 10, 7);
+            scene.add(dirLight);
+
+            createBow3D();
+            window.addEventListener('resize', onWindowResize);
         }
 
-        // String Similarity Algorithm (Levenshtein Distance / Percentage)
-        function calculateSimilarity(str1, str2) {
-            const s1 = str1.trim().toLowerCase();
-            const s2 = str2.trim().toLowerCase();
-            if (s1 === s2) return 100;
-            const longer = s1.length > s2.length ? s1 : s2;
-            const shorter = s1.length > s2.length ? s2 : s1;
-            if (longer.length === 0) return 100;
-            const editDistance = levenshteinDistance(longer, shorter);
-            return Math.round(((longer.length - editDistance) / longer.length) * 100);
+        function createBow3D() {
+            bowMesh = new THREE.Group();
+
+            const bowMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x8b4513, 
+                roughness: 0.4, 
+                metalness: 0.1 
+            });
+
+            const gripGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.6, 16);
+            const gripMat = new THREE.MeshStandardMaterial({ color: 0x3e2723, roughness: 0.6 });
+            const grip = new THREE.Mesh(gripGeo, gripMat);
+            grip.rotation.z = Math.PI / 2;
+            bowMesh.add(grip);
+
+            const upperCurveGeo = new THREE.CylinderGeometry(0.05, 0.07, 1.2, 16);
+            const upperLimb = new THREE.Mesh(upperCurveGeo, bowMaterial);
+            upperLimb.position.set(0, 0.9, 0);
+            upperLimb.rotation.z = 0.15;
+            bowMesh.add(upperLimb);
+
+            const lowerLimb = new THREE.Mesh(upperCurveGeo, bowMaterial);
+            lowerLimb.position.set(0, -0.9, 0);
+            lowerLimb.rotation.z = -0.15;
+            bowMesh.add(lowerLimb);
+
+            const tipGeo = new THREE.SphereGeometry(0.06, 16, 16);
+            const tipMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.8 });
+            
+            const upperTip = new THREE.Mesh(tipGeo, tipMat);
+            upperTip.position.set(0.18, 1.45, 0);
+            bowMesh.add(upperTip);
+
+            const lowerTip = new THREE.Mesh(tipGeo, tipMat);
+            lowerTip.position.set(0.18, -1.45, 0);
+            bowMesh.add(lowerTip);
+
+            const lineMat = new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 3 });
+            const points = [
+                new THREE.Vector3(0.18, 1.45, 0),
+                new THREE.Vector3(-0.4, 0, 0),
+                new THREE.Vector3(0.18, -1.45, 0)
+            ];
+            const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
+            bowStringMesh = new THREE.Line(lineGeo, lineMat);
+            bowMesh.add(bowStringMesh);
+
+            const triangleMat = new THREE.LineBasicMaterial({ color: 0x38bdf8, linewidth: 2 });
+            const triPoints = [
+                new THREE.Vector3(0.18, 1.45, 0),
+                new THREE.Vector3(0, 0, 0),
+                new THREE.Vector3(0.18, -1.45, 0),
+                new THREE.Vector3(0.18, 1.45, 0)
+            ];
+            const triGeo = new THREE.BufferGeometry().setFromPoints(triPoints);
+            bowStringTriangleMesh = new THREE.Line(triGeo, triangleMat);
+            bowMesh.add(bowStringTriangleMesh);
+
+            const arrowGroup = new THREE.Group();
+            const shaftGeo = new THREE.CylinderGeometry(0.02, 0.02, 1.8, 8);
+            const shaftMat = new THREE.MeshStandardMaterial({ color: 0xd2b48c });
+            const shaft = new THREE.Mesh(shaftGeo, shaftMat);
+            shaft.rotation.z = Math.PI / 2;
+            arrowGroup.add(shaft);
+
+            const headGeo = new THREE.ConeGeometry(0.06, 0.2, 8);
+            const headMat = new THREE.MeshStandardMaterial({ color: 0xc0c0c0, metalness: 0.9 });
+            const head = new THREE.Mesh(headGeo, headMat);
+            head.rotation.z = -Math.PI / 2;
+            head.position.set(0.9, 0, 0);
+            arrowGroup.add(head);
+
+            arrowOnBowMesh = arrowGroup;
+            arrowOnBowMesh.visible = false;
+            bowMesh.add(arrowOnBowMesh);
+
+            bowMesh.scale.set(0.8, 0.8, 0.8);
+            scene.add(bowMesh);
+            bowMesh.visible = false;
+
+            for (let i = 0; i < 21; i++) {
+                const sph = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 8), new THREE.MeshBasicMaterial({ color: 0x38bdf8 }));
+                sph.visible = false;
+                scene.add(sph);
+                landmarkSpheres.left.push(sph);
+            }
+            for (let i = 0; i < 21; i++) {
+                const sph = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 8), new THREE.MeshBasicMaterial({ color: 0xf43f5e }));
+                sph.visible = false;
+                scene.add(sph);
+                landmarkSpheres.right.push(sph);
+            }
         }
 
-        function levenshteinDistance(s1, s2) {
-            const costs = [];
-            for (let i = 0; i <= s1.length; i++) {
-                let lastValue = i;
-                for (let j = 0; j <= s2.length; j++) {
-                    if (i === 0) {
-                        costs[j] = j;
-                    } else if (j > 0) {
-                        let newValue = costs[j - 1];
-                        if (s1.charAt(i - 1) !== s2.charAt(j - 1)) {
-                            newValue = Math.min(Math.min(newValue, lastValue), costs[j]) + 1;
-                        }
-                        costs[j - 1] = lastValue;
-                        lastValue = newValue;
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // --- MEDIAPIPE HAND TRACKING SETUP ---
+        let handsAI, cameraUtilsInstance;
+
+        function initMediaPipe() {
+            const videoElement = document.getElementById('webcam');
+
+            handsAI = new Hands({
+                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+            });
+
+            handsAI.setOptions({
+                maxNumHands: 2,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.65,
+                minTrackingConfidence: 0.65
+            });
+
+            handsAI.onResults(onHandResults);
+
+            navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } })
+                .then((stream) => {
+                    videoElement.srcObject = stream;
+                    videoElement.play();
+                    gameState.cameraReady = true;
+
+                    cameraUtilsInstance = new Camera(videoElement, {
+                        onFrame: async () => {
+                            await handsAI.send({ image: videoElement });
+                        },
+                        width: 1280,
+                        height: 720
+                    });
+                    cameraUtilsInstance.start();
+                    gameState.aiReady = true;
+                })
+                .catch((err) => {
+                    console.error("Camera error:", err);
+                });
+        }
+
+        function recognizeGesture(landmarks) {
+            const wrist = landmarks[0];
+            let totalDist = 0;
+            const tips = [8, 12, 16, 20];
+            const pips = [6, 10, 14, 18];
+
+            tips.forEach((tipIdx, i) => {
+                const tip = landmarks[tipIdx];
+                const pip = landmarks[pips[i]];
+                const distTipWrist = Math.hypot(tip.x - wrist.x, tip.y - wrist.y);
+                const distPipWrist = Math.hypot(pip.x - wrist.x, pip.y - wrist.y);
+                if (distTipWrist < distPipWrist * 1.15) {
+                    totalDist += 1;
+                }
+            });
+
+            if (totalDist >= 3.5) return 'FIST';
+            else if (totalDist <= 1.5) return 'PALM';
+            else return 'SEMI';
+        }
+
+        function onHandResults(results) {
+            if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
+                handData.left.detected = false;
+                handData.right.detected = false;
+                if (bowState.isDrawing && !handData.rightMissingTimer) {
+                    handData.rightMissingTimer = setTimeout(() => {
+                        if (bowState.isDrawing) releaseArrow();
+                        handData.rightMissingTimer = null;
+                    }, 300);
+                }
+                updateHandStatusUI();
+                hideLandmarks();
+                return;
+            }
+
+            if (handData.rightMissingTimer) {
+                clearTimeout(handData.rightMissingTimer);
+                handData.rightMissingTimer = null;
+            }
+
+            let foundLeft = false;
+            let foundRight = false;
+
+            results.multiHandLandmarks.forEach((landmarks, index) => {
+                const handedness = results.multiHandedness[index].label;
+                let isLeft = (handedness === 'Left');
+                if (gameState.swapHands) isLeft = !isLeft;
+
+                const wrist = landmarks[0];
+                const screenX = (1 - wrist.x) * 2 - 1;
+                const screenY = -(wrist.y * 2 - 1);
+                const worldX = screenX * 4.5;
+                const worldY = screenY * 3.0;
+
+                if (isLeft) {
+                    foundLeft = true;
+                    const clampedX = Math.max(0.5, Math.min(3.8, worldX));
+                    const clampedY = Math.max(-2.2, Math.min(2.2, worldY));
+                    handData.left = { detected: true, x: clampedX, y: clampedY };
+                    if (gameState.landmarksEnabled) renderLandmarks(landmarks, landmarkSpheres.left, 0x38bdf8);
+                } else {
+                    foundRight = true;
+                    const clampedX = Math.max(-3.8, Math.min(3.8, worldX));
+                    const clampedY = Math.max(-2.5, Math.min(2.5, worldY));
+                    const gesture = recognizeGesture(landmarks);
+                    handData.right = { detected: true, x: clampedX, y: clampedY, gesture: gesture };
+                    if (gameState.landmarksEnabled) renderLandmarks(landmarks, landmarkSpheres.right, 0xf43f5e);
+                }
+            });
+
+            handData.left.detected = foundLeft;
+            handData.right.detected = foundRight;
+
+            if (!gameState.landmarksEnabled) hideLandmarks();
+            updateHandStatusUI();
+
+            if (gameState.status === 'PLAYING') {
+                processBowMechanics();
+            }
+        }
+
+        function renderLandmarks(landmarks, spheres, colorHex) {
+            landmarks.forEach((lm, i) => {
+                const sph = spheres[i];
+                if (sph) {
+                    sph.material.color.setHex(colorHex);
+                    const sx = ((1 - lm.x) * 2 - 1) * 4.5;
+                    const sy = -((lm.y * 2 - 1)) * 3.0;
+                    sph.position.set(sx, sy, 0.5);
+                    sph.visible = true;
+                }
+            });
+        }
+
+        function hideLandmarks() {
+            landmarkSpheres.left.forEach(s => s.visible = false);
+            landmarkSpheres.right.forEach(s => s.visible = false);
+        }
+
+        function updateHandStatusUI() {
+            const lElem = document.getElementById('hand-left-status');
+            const rElem = document.getElementById('hand-right-status');
+
+            if (handData.left.detected) {
+                lElem.innerText = "เจอแล้ว";
+                lElem.className = "text-emerald-400 font-semibold";
+            } else {
+                lElem.innerText = "ไม่พบมือ";
+                lElem.className = "text-red-400 font-semibold";
+            }
+
+            if (handData.right.detected) {
+                let gestureText = "แบมือ";
+                if (handData.right.gesture === 'FIST') gestureText = "กำมือ";
+                else if (handData.right.gesture === 'SEMI') gestureText = "กึ่งแบ";
+                rElem.innerText = gestureText;
+                rElem.className = "text-emerald-400 font-semibold";
+            } else {
+                rElem.innerText = "ไม่พบมือ";
+                rElem.className = "text-red-400 font-semibold";
+            }
+        }
+
+        function processBowMechanics() {
+            const powerBarContainer = document.getElementById('power-bar-container');
+            const powerBarFill = document.getElementById('power-bar-fill');
+            const powerPercentText = document.getElementById('power-percent-text');
+
+            if (!handData.left.detected || !bowMesh) {
+                bowMesh.visible = false;
+                if (powerBarContainer) powerBarContainer.classList.add('opacity-0', 'pointer-events-none');
+                if (bowState.isDrawing) releaseArrow();
+                return;
+            }
+
+            bowMesh.visible = true;
+            bowMesh.position.set(handData.left.x, handData.left.y, 0);
+
+            if (handData.right.detected) {
+                const dx = handData.right.x - handData.left.x;
+                const dy = handData.right.y - handData.left.y;
+                const distanceToBow = Math.hypot(dx, dy);
+
+                if (!bowState.isDrawing && handData.right.gesture === 'FIST' && distanceToBow < 2.8) {
+                    bowState.isDrawing = true;
+                    bowState.drawPower = 0.05;
+                    bowState.lastPower = 0.05;
+                    arrowOnBowMesh.visible = true;
+                    if (powerBarContainer) powerBarContainer.classList.remove('opacity-0', 'pointer-events-none');
+                    sound.playDrawStart();
+                }
+
+                if (bowState.isDrawing) {
+                    const pullDist = Math.max(0, -dx);
+                    const targetPower = Math.min(1.0, pullDist / 1.8);
+                    bowState.drawPower += (targetPower - bowState.drawPower) * 0.25;
+                    bowState.lastPower = bowState.drawPower;
+
+                    if (Math.random() < 0.2) sound.playCharge(bowState.drawPower);
+
+                    updateBowStringDeformation(bowState.drawPower, handData.right.x, handData.right.y);
+
+                    const powerPercent = Math.round(bowState.drawPower * 100);
+                    if (powerBarFill) powerBarFill.style.height = `${powerPercent}%`;
+                    if (powerPercentText) powerPercentText.innerText = `${powerPercent}%`;
+
+                    if (handData.right.gesture === 'PALM' || handData.right.gesture === 'SEMI') {
+                        releaseArrow();
+                        if (powerBarContainer) powerBarContainer.classList.add('opacity-0', 'pointer-events-none');
                     }
                 }
-                if (s1.length > 0) costs[s2.length] = lastValue;
-            }
-            return costs[s2.length];
-        }
-    </script>
-
-    <script>
-        const videoElement = document.getElementById('webcam');
-        const canvasElement = document.getElementById('output_canvas');
-        const canvasCtx = canvasElement.getContext('2d');
-
-        function onResults(results) {
-            if (canvasElement.width !== canvasElement.clientWidth || canvasElement.height !== canvasElement.clientHeight) {
-                canvasElement.width = canvasElement.clientWidth;
-                canvasElement.height = canvasElement.clientHeight;
+            } else if (bowState.isDrawing) {
+                releaseArrow();
+                if (powerBarContainer) powerBarContainer.classList.add('opacity-0', 'pointer-events-none');
             }
 
-            canvasCtx.save();
-            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-
-            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
-
-            if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
-                faceLandmarksData = results.multiFaceLandmarks[0];
-                drawAROverlay(canvasCtx, faceLandmarksData, canvasElement.width, canvasElement.height, currentARState);
-            } else {
-                faceLandmarksData = null;
+            if (!bowState.isDrawing) {
+                updateBowStringDeformation(0, 0, 0);
+                arrowOnBowMesh.visible = false;
+                if (powerBarContainer) powerBarContainer.classList.add('opacity-0', 'pointer-events-none');
             }
-
-            if (currentARState === 'horns') {
-                drawVignette(canvasCtx, canvasElement.width, canvasElement.height);
-            }
-
-            canvasCtx.restore();
         }
 
-        function drawAROverlay(ctx, landmarks, width, height, state) {
-            if (state === 'none') return;
-
-            const forehead = landmarks[10];
-            const leftTemple = landmarks[234];
-            const rightTemple = landmarks[454];
-
-            if (!forehead || !leftTemple || !rightTemple) return;
-
-            const fx = forehead.x * width;
-            const fy = forehead.y * height;
+        function updateBowStringDeformation(power, rightWorldX, rightWorldY) {
+            if (!bowStringMesh || !bowStringTriangleMesh) return;
+            const pullOffset = power * 0.8;
             
-            const tx1 = leftTemple.x * width;
-            const ty1 = leftTemple.y * height;
-            const tx2 = rightTemple.x * width;
-            const ty2 = rightTemple.y * height;
-            const headWidth = Math.hypot(tx2 - tx1, ty2 - ty1);
+            const points = [
+                new THREE.Vector3(0.18, 1.45, 0),
+                new THREE.Vector3(-0.4 - pullOffset, 0, -pullOffset * 0.5),
+                new THREE.Vector3(0.18, -1.45, 0)
+            ];
+            bowStringMesh.geometry.dispose();
+            bowStringMesh.geometry = new THREE.BufferGeometry().setFromPoints(points);
 
-            ctx.save();
-            if (state === 'crown') {
-                const crownWidth = headWidth * 1.1;
-                const crownHeight = crownWidth * 0.6;
-                const cx = fx - (crownWidth / 2);
-                const cy = fy - crownHeight - (headWidth * 0.2);
-
-                ctx.translate(cx + crownWidth/2, cy + crownHeight/2);
-                ctx.rotate(Math.sin(Date.now() / 200) * 0.05);
-                ctx.translate(-(cx + crownWidth/2), -(cy + crownHeight/2));
-
-                const grad = ctx.createLinearGradient(cx, cy, cx, cy + crownHeight);
-                grad.addColorStop(0, '#FFD700');
-                grad.addColorStop(1, '#FFA500');
-                ctx.fillStyle = grad;
-                ctx.strokeStyle = '#DAA520';
-                ctx.lineWidth = 3;
-
-                ctx.beginPath();
-                ctx.moveTo(cx, cy + crownHeight);
-                ctx.lineTo(cx + crownWidth * 0.1, cy + crownHeight * 0.3);
-                ctx.lineTo(cx + crownWidth * 0.3, cy + crownHeight * 0.7);
-                ctx.lineTo(cx + crownWidth * 0.5, cy + crownHeight * 0.1);
-                ctx.lineTo(cx + crownWidth * 0.7, cy + crownHeight * 0.7);
-                ctx.lineTo(cx + crownWidth * 0.9, cy + crownHeight * 0.3);
-                ctx.lineTo(cx + crownWidth, cy + crownHeight);
-                ctx.closePath();
-                ctx.fill();
-                ctx.stroke();
-
-                ctx.fillStyle = '#FF0055';
-                ctx.beginPath();
-                ctx.arc(cx + crownWidth * 0.5, cy + crownHeight * 0.5, 6, 0, Math.PI * 2);
-                ctx.arc(cx + crownWidth * 0.3, cy + crownHeight * 0.7, 4, 0, Math.PI * 2);
-                ctx.arc(cx + crownWidth * 0.7, cy + crownHeight * 0.7, 4, 0, Math.PI * 2);
-                ctx.fill();
-
-            } else if (state === 'horns') {
-                const hornSize = headWidth * 0.4;
-                
-                const lhx = (leftTemple.x * width) - (hornSize * 0.2);
-                const lhy = (leftTemple.y * height) - (hornSize * 0.8);
-                drawSingleHorn(ctx, lhx, lhy, hornSize, true);
-
-                const rhx = (rightTemple.x * width) + (hornSize * 0.2);
-                const rhy = (rightTemple.y * height) - (hornSize * 0.8);
-                drawSingleHorn(ctx, rhx, rhy, hornSize, false);
+            if (bowState.isDrawing && handData.right.detected) {
+                const localRightX = rightWorldX - bowMesh.position.x;
+                const localRightY = rightWorldY - bowMesh.position.y;
+                const triPoints = [
+                    new THREE.Vector3(0.18, 1.45, 0),
+                    new THREE.Vector3(localRightX, localRightY, 0),
+                    new THREE.Vector3(0.18, -1.45, 0),
+                    new THREE.Vector3(0.18, 1.45, 0)
+                ];
+                bowStringTriangleMesh.geometry.dispose();
+                bowStringTriangleMesh.geometry = new THREE.BufferGeometry().setFromPoints(triPoints);
+                bowStringTriangleMesh.visible = true;
+            } else {
+                bowStringTriangleMesh.visible = false;
             }
-            ctx.restore();
-        }
 
-        function drawSingleHorn(ctx, x, y, size, isLeft) {
-            ctx.save();
-            ctx.translate(x, y);
-            if (isLeft) ctx.scale(-1, 1);
-
-            const grad = ctx.createLinearGradient(0, 0, 0, -size);
-            grad.addColorStop(0, '#8B0000');
-            grad.addColorStop(0.5, '#FF0000');
-            grad.addColorStop(1, '#FF4500');
-            ctx.fillStyle = grad;
-            ctx.strokeStyle = '#5A0000';
-            ctx.lineWidth = 2;
-
-            ctx.beginPath();
-            ctx.moveTo(0, 0);
-            ctx.quadraticCurveTo(-size * 0.5, -size * 0.5, -size * 0.8, -size);
-            ctx.quadraticCurveTo(-size * 0.2, -size * 0.6, 0, 0);
-            ctx.closePath();
-            ctx.fill();
-            ctx.stroke();
-            ctx.restore();
-        }
-
-        function drawVignette(ctx, width, height) {
-            const gradient = ctx.createRadialGradient(width/2, height/2, width * 0.2, width/2, height/2, width * 0.8);
-            gradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
-            gradient.addColorStop(1, 'rgba(100, 0, 0, 0.7)');
-            ctx.fillStyle = gradient;
-            ctx.fillRect(0, 0, width, height);
-        }
-
-        const faceMesh = new FaceMesh({
-            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
-        });
-        faceMesh.setOptions({
-            maxNumFaces: 1,
-            refineLandmarks: true,
-            minDetectionConfidence: 0.5,
-            minTrackingConfidence: 0.5
-        });
-        faceMesh.onResults(onResults);
-
-        let camera = null;
-        async function initCamera() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 }, audio: true });
-                videoElement.srcObject = stream;
-                camera = new Camera(videoElement, {
-                    onFrame: async () => {
-                        await faceMesh.send({ image: videoElement });
-                    },
-                    width: 640,
-                    height: 480
-                });
-                await camera.start();
-            } catch (err) {
-                console.error("Camera/Mic error:", err);
-                alert("ไม่สามารถเข้าถึงกล้องหรือไมโครโฟนได้ กรุณาตรวจสอบการอนุญาตใช้งานในเบราว์เซอร์");
+            if (arrowOnBowMesh) {
+                arrowOnBowMesh.position.set(-0.4 - pullOffset * 0.5, 0, 0);
             }
         }
-    </script>
 
-    <script>
-        startBtn.addEventListener('click', async () => {
-            SoundFX.click();
-            await initCamera();
-            startScreen.classList.add('hidden');
-            startGame();
-        });
+        function releaseArrow() {
+            if (!bowState.isDrawing) return;
+            const power = bowState.lastPower;
+            bowState.isDrawing = false;
+            arrowOnBowMesh.visible = false;
+            updateBowStringDeformation(0);
 
-        restartBtn.addEventListener('click', () => {
-            SoundFX.click();
-            endScreen.classList.add('hidden');
-            startGame();
-        });
+            if (power < 0.15) {
+                sound.playLowPower();
+                showPopupText("แรงไม่พอ!", "text-amber-400");
+                return;
+            }
 
-        function startGame() {
-            currentQuestionIndex = 0;
-            score = 0;
-            totalScoreEl.textContent = score;
-            playNextQuestion();
+            sound.playRelease();
+            shootArrow3D(bowMesh.position.clone(), power);
         }
 
-        function playNextQuestion() {
-            if (currentQuestionIndex >= vocabularyList.length) {
+        // --- FRUIT & ARROW ENTITIES ---
+        class FruitEntity {
+            constructor(wordObj, isTarget, spawnX) {
+                this.word = wordObj.word;
+                this.type = wordObj.type;
+                this.isTarget = isTarget;
+                this.active = true;
+                this.pinned = false;
+                this.pinTimer = 0;
+
+                const geometry = new THREE.SphereGeometry(0.35, 16, 16);
+                const color = isTarget ? 0x10b981 : (Math.random() > 0.5 ? 0xf59e0b : 0xec4899);
+                const material = new THREE.MeshStandardMaterial({ color: color, roughness: 0.3, metalness: 0.2 });
+                this.mesh = new THREE.Mesh(geometry, material);
+
+                this.x = spawnX;
+                this.y = 3.5;
+                this.z = 0;
+                this.mesh.position.set(this.x, this.y, this.z);
+                scene.add(this.mesh);
+
+                this.speedY = 0.018 + Math.random() * 0.008;
+
+                this.labelEl = document.createElement('div');
+                this.labelEl.className = "absolute z-20 px-3 py-1 bg-slate-900/90 text-white font-bold text-sm rounded-xl border border-white/30 shadow-lg pointer-events-none transform -translate-x-1/2 -translate-y-1/2 transition-transform duration-75";
+                this.labelEl.innerText = this.word;
+                document.getElementById('labels-container').appendChild(this.labelEl);
+            }
+
+            update() {
+                if (!this.active) return;
+                if (!this.pinned) {
+                    this.y -= this.speedY;
+                    this.mesh.position.y = this.y;
+                    this.mesh.rotation.x += 0.01;
+                    this.mesh.rotation.y += 0.02;
+
+                    if (this.y < -3.2) {
+                        this.destroyCompletely();
+                        if (this.isTarget) {
+                            sound.playFall();
+                            updateScore(-5);
+                            showPopupText("-5 กริยาตกพื้น!", "text-red-400");
+                            checkQuestionEnd(false);
+                        }
+                    }
+                } else {
+                    this.pinTimer += 0.016;
+                    if (this.pinTimer > 1.0) this.destroyCompletely();
+                }
+                updateDOM_LabelPosition(this);
+            }
+
+            pinToArrow(arrowObj) {
+                this.pinned = true;
+                this.pinTimer = 0;
+            }
+
+            destroyCompletely() {
+                if (!this.active) return;
+                this.active = false;
+                if (this.mesh) {
+                    scene.remove(this.mesh);
+                    this.mesh.geometry.dispose();
+                }
+                if (this.labelEl) this.labelEl.remove();
+            }
+        }
+
+        function updateDOM_LabelPosition(fruit) {
+            if (!fruit.labelEl) return;
+            const vector = new THREE.Vector3(fruit.x, fruit.y + 0.5, fruit.z);
+            vector.project(camera);
+
+            const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+            const y = (-(vector.y * 0.5) + 0.5) * window.innerHeight;
+
+            fruit.labelEl.style.left = `${x}px`;
+            fruit.labelEl.style.top = `${y}px`;
+            if (fruit.pinned || !fruit.active) fruit.labelEl.style.opacity = '0';
+        }
+
+        class ArrowEntity {
+            constructor(startPos, power) {
+                this.active = true;
+                this.pinnedToEdge = false;
+                this.pinTimer = 0;
+                this.targetHit = null;
+
+                const arrowGroup = new THREE.Group();
+                const shaftGeo = new THREE.CylinderGeometry(0.02, 0.02, 1.8, 8);
+                const shaftMat = new THREE.MeshStandardMaterial({ color: 0xd2b48c });
+                const shaft = new THREE.Mesh(shaftGeo, shaftMat);
+                shaft.rotation.z = Math.PI / 2;
+                arrowGroup.add(shaft);
+
+                const headGeo = new THREE.ConeGeometry(0.06, 0.2, 8);
+                const headMat = new THREE.MeshStandardMaterial({ color: 0xc0c0c0, metalness: 0.9 });
+                const head = new THREE.Mesh(headGeo, headMat);
+                head.rotation.z = -Math.PI / 2;
+                head.position.set(0.9, 0, 0);
+                arrowGroup.add(head);
+
+                this.mesh = arrowGroup;
+                this.mesh.position.copy(startPos);
+                scene.add(this.mesh);
+
+                const speed = power * 0.35;
+                this.vx = -speed * 1.2;
+                this.vy = speed * 0.3;
+                this.gravity = CONFIG.gravity;
+            }
+
+            update() {
+                if (!this.active) return;
+
+                if (!this.pinnedToEdge && !this.targetHit) {
+                    this.mesh.position.x += this.vx;
+                    this.mesh.position.y += this.vy;
+                    this.vy -= this.gravity;
+
+                    const angle = Math.atan2(this.vy, this.vx);
+                    this.mesh.rotation.z = angle;
+
+                    for (let fruit of activeFruits) {
+                        if (fruit.active && !fruit.pinned) {
+                            const dist = this.mesh.position.distanceTo(fruit.mesh.position);
+                            if (dist < 0.65) {
+                                this.onHitFruit(fruit);
+                                break;
+                            }
+                        }
+                    }
+
+                    if (this.mesh.position.x < -4.2 || Math.abs(this.mesh.position.y) > 3.2) {
+                        this.pinToScreenEdge();
+                    }
+                } else if (this.targetHit) {
+                    this.mesh.position.copy(this.targetHit.mesh.position);
+                    this.pinTimer += 0.016;
+                    if (this.pinTimer > 1.0) this.destroyCompletely();
+                } else if (this.pinnedToEdge) {
+                    this.pinTimer += 0.016;
+                    if (this.pinTimer > 1.0) this.destroyCompletely();
+                }
+            }
+
+            onHitFruit(fruit) {
+                sound.playPin();
+                this.targetHit = fruit;
+                fruit.pinToArrow(this);
+
+                if (fruit.isTarget) {
+                    sound.playCorrect();
+                    updateScore(10);
+                    showPopupText("+10 ถูกต้อง!", "text-emerald-400");
+                    setTimeout(() => checkQuestionEnd(true), 800);
+                } else {
+                    sound.playWrong();
+                    updateScore(-5);
+                    showPopupText("-5 คำหลอก!", "text-red-400");
+                    fruit.destroyCompletely();
+                    this.targetHit = null;
+                    this.pinToScreenEdge();
+                }
+            }
+
+            pinToScreenEdge() {
+                this.pinnedToEdge = true;
+                this.pinTimer = 0;
+                sound.playPin();
+            }
+
+            destroyCompletely() {
+                if (!this.active) return;
+                this.active = false;
+                if (this.mesh) scene.remove(this.mesh);
+            }
+        }
+
+        function shootArrow3D(pos, power) {
+            const arrow = new ArrowEntity(pos, power);
+            activeArrows.push(arrow);
+        }
+
+        // --- GAMEFLOW FUNCTIONS ---
+        function startNewGame() {
+            sound.init();
+            sound.playGameStart();
+
+            gameState.status = 'PLAYING';
+            gameState.score = 0;
+            gameState.questionIndex = 1;
+            gameState.correctCount = 0;
+            gameState.wrongCount = 0;
+            gameState.startTime = Date.now();
+
+            // Hide the start game button once started
+            document.getElementById('btn-start-game').classList.add('hidden');
+            document.getElementById('gameover-screen').classList.add('hidden');
+
+            updateHUDDisplay();
+            startTimer();
+            loadQuestion();
+        }
+
+        function startTimer() {
+            if (gameState.timerInterval) clearInterval(gameState.timerInterval);
+            gameState.timerInterval = setInterval(() => {
+                const diff = Math.floor((Date.now() - gameState.startTime) / 1000);
+                const mins = String(Math.floor(diff / 60)).padStart(2, '0');
+                const secs = String(diff % 60).padStart(2, '0');
+                document.getElementById('hud-time').innerText = `${mins}:${secs}`;
+            }, 1000);
+        }
+
+        function loadQuestion() {
+            if (gameState.questionIndex > CONFIG.totalQuestions) {
                 endGame();
                 return;
             }
 
-            currentARState = 'none';
-            const currentWordObj = vocabularyList[currentQuestionIndex];
-            currentQEl.textContent = currentQuestionIndex + 1;
-            vocabEnEl.textContent = currentWordObj.en;
-            vocabThEl.textContent = `(${currentWordObj.th})`;
-            recognizedSpeechText.textContent = "พูดว่า...";
-            accuracyPercentEl.textContent = "0%";
-            meterBar.style.width = "0%";
-            meterBar.className = "h-full rounded-full transition-all duration-300 bg-gradient-to-r from-red-400 via-yellow-400 to-green-500";
+            activeFruits.forEach(f => f.destroyCompletely());
+            activeFruits = [];
 
-            let count = 3;
-            statusBadge.className = "mb-3 px-4 py-1.5 bg-amber-100 text-amber-700 rounded-full font-medium text-sm md:text-base shadow-inner transition-all animate-pulse";
-            statusBadge.textContent = `เตรียมตัว... ${count}`;
-            SoundFX.tick();
+            const randomVerb = WORD_DATA.verbs[Math.floor(Math.random() * WORD_DATA.verbs.length)];
+            let shuffledNouns = [...WORD_DATA.nouns].sort(() => 0.5 - Math.random());
+            let dummyNouns = [shuffledNouns[0], shuffledNouns[1]];
 
-            const countInterval = setInterval(() => {
-                count--;
-                if (count > 0) {
-                    statusBadge.textContent = `เตรียมตัว... ${count}`;
-                    SoundFX.tick();
-                } else {
-                    clearInterval(countInterval);
-                    startListeningPhase(currentWordObj.en);
-                }
-            }, 1000);
+            let items = [
+                { wordObj: randomVerb, isTarget: true },
+                { wordObj: dummyNouns[0], isTarget: false },
+                { wordObj: dummyNouns[1], isTarget: false }
+            ];
+            items.sort(() => 0.5 - Math.random());
+
+            const xPositions = [-3.2, -2.6, -2.0];
+            items.forEach((item, index) => {
+                const fruit = new FruitEntity(item.wordObj, item.isTarget, xPositions[index]);
+                fruit.y = 3.5 + (index * 0.8);
+                activeFruits.push(fruit);
+            });
+
+            sound.playNextQ();
+            document.getElementById('hud-message').innerText = `ข้อที่ ${gameState.questionIndex}/${CONFIG.totalQuestions}: ยิงเฉพาะคำกริยา!`;
+            updateHUDDisplay();
         }
 
-        function startListeningPhase(targetWord) {
-            statusBadge.className = "mb-3 px-4 py-1.5 bg-emerald-100 text-emerald-700 rounded-full font-bold text-sm md:text-base shadow-inner transition-all animate-pulse";
-            statusBadge.textContent = "พูดเลย!";
-            micIconContainer.className = "w-24 h-24 rounded-full bg-emerald-100 border-4 border-emerald-500 flex items-center justify-center text-3xl text-emerald-600 shadow-inner mb-2 animate-bounce";
-            micStatusIcon.className = "fa-solid fa-microphone";
-            feedbackMessage.textContent = "กำลังฟังเสียงของคุณอยู่...";
-            SoundFX.go();
-
-            let speechDetected = false;
-            let finalTranscript = "";
-            let recognitionTimeout = null;
-
-            if (speechSupported && recognition) {
-                try {
-                    recognition.onresult = (event) => {
-                        speechDetected = true;
-                        let interim = "";
-                        for (let i = event.resultIndex; i < event.results.length; ++i) {
-                            if (event.results[i].isFinal) {
-                                finalTranscript += event.results[i][0].transcript;
-                            } else {
-                                interim += event.results[i][0].transcript;
-                            }
-                        }
-                        const currentSpoken = finalTranscript || interim;
-                        recognizedSpeechText.textContent = `"${currentSpoken}"`;
-                    };
-
-                    recognition.onerror = (event) => {
-                        console.log("Speech recognition error", event.error);
-                    };
-
-                    recognition.start();
-                } catch (e) {
-                    console.log("Speech recognition start exception", e);
-                }
+        function checkQuestionEnd(verbShotCorrectly) {
+            if (verbShotCorrectly) {
+                gameState.correctCount++;
+                gameState.questionIndex++;
+                setTimeout(() => loadQuestion(), 1000);
             }
-
-            recognitionTimeout = setTimeout(() => {
-                if (speechSupported && recognition) {
-                    try { recognition.stop(); } catch(e){}
-                }
-
-                micIconContainer.className = "w-24 h-24 rounded-full bg-indigo-100 border-4 border-indigo-400 flex items-center justify-center text-3xl text-indigo-500 shadow-inner mb-2";
-                micStatusIcon.className = "fa-solid fa-microphone-slash";
-
-                evaluateSpeechResult(finalTranscript, targetWord);
-
-            }, 5000);
         }
 
-        function evaluateSpeechResult(spokenText, targetWord) {
-            const similarity = calculateSimilarity(spokenText, targetWord);
-            accuracyPercentEl.textContent = `${similarity}%`;
-            meterBar.style.width = `${similarity}%`;
+        function updateScore(delta) {
+            gameState.score = Math.max(0, gameState.score + delta);
+            if (delta > 0) gameState.correctCount++;
+            else gameState.wrongCount++;
+            updateHUDDisplay();
+        }
 
-            if (!spokenText || spokenText.trim() === "") {
-                statusBadge.className = "mb-3 px-4 py-1.5 bg-yellow-100 text-yellow-800 rounded-full font-bold text-sm md:text-base shadow-inner transition-all";
-                statusBadge.textContent = "ไม่ได้ยินเสียง!";
-                feedbackMessage.textContent = "ไม่เป็นไร ลองพูดให้ดังขึ้นในข้อถัดไปนะจ๊ะ";
-                SoundFX.warning();
+        function updateHUDDisplay() {
+            document.getElementById('hud-score').innerText = gameState.score;
+            document.getElementById('hud-question').innerText = `${Math.min(gameState.questionIndex, CONFIG.totalQuestions)}/${CONFIG.totalQuestions}`;
+        }
 
-                setTimeout(() => {
-                    currentQuestionIndex++;
-                    playNextQuestion();
-                }, 3000);
-                return;
-            }
-
-            if (similarity >= 80) {
-                score++;
-                totalScoreEl.textContent = score;
-                currentARState = 'crown';
-                statusBadge.className = "mb-3 px-4 py-1.5 bg-green-100 text-green-700 rounded-full font-bold text-sm md:text-base shadow-inner transition-all";
-                statusBadge.textContent = "ผ่าน! เก่งมาก ✨";
-                feedbackMessage.textContent = `ยอดเยี่ยม! คุณออกเสียงได้ตรงกับคำว่า "${targetWord}"`;
-                meterBar.className = "h-full rounded-full transition-all duration-300 bg-green-500";
-                SoundFX.correct();
-
-                confetti({
-                    particleCount: 100,
-                    spread: 70,
-                    origin: { y: 0.6 }
-                });
-
-            } else {
-                currentARState = 'horns';
-                statusBadge.className = "mb-3 px-4 py-1.5 bg-red-100 text-red-700 rounded-full font-bold text-sm md:text-base shadow-inner transition-all";
-                statusBadge.textContent = "ไม่ผ่าน ❌";
-                feedbackMessage.textContent = `พยายามอีกนิดนะ! คำที่ถูกต้องคือ "${targetWord}"`;
-                meterBar.className = "h-full rounded-full transition-all duration-300 bg-red-500";
-                SoundFX.wrong();
-            }
-
-            setTimeout(() => {
-                currentQuestionIndex++;
-                playNextQuestion();
-            }, 3000);
+        function showPopupText(text, colorClass) {
+            const container = document.getElementById('popup-container');
+            const popup = document.createElement('div');
+            popup.className = `text-3xl font-extrabold ${colorClass} drop-shadow-lg popup-anim whitespace-nowrap`;
+            popup.innerText = text;
+            container.appendChild(popup);
+            setTimeout(() => popup.remove(), 1000);
         }
 
         function endGame() {
-            currentARState = 'none';
-            endScreen.classList.remove('hidden');
-            finalScoreDisplay.textContent = `${score}/10`;
+            gameState.status = 'GAMEOVER';
+            if (gameState.timerInterval) clearInterval(gameState.timerInterval);
+            sound.playGameOver();
 
-            if (score >= 8) {
-                endIcon.className = "w-24 h-24 bg-gradient-to-tr from-yellow-400 to-amber-500 rounded-full flex items-center justify-center mx-auto mb-4 shadow-xl text-white text-4xl";
-                endIcon.innerHTML = '<i class="fa-solid fa-trophy"></i>';
-                endTitle.textContent = "สุดยอดเซียนคอมพิวเตอร์!";
-                endSubtitle.textContent = `ยอดเยี่ยมมาก! คุณทำคะแนนได้ผ่านเกณฑ์ระดับสูง`;
-                SoundFX.fanfare();
-                confetti({
-                    particleCount: 200,
-                    spread: 100,
-                    origin: { y: 0.4 }
-                });
-            } else {
-                endIcon.className = "w-24 h-24 bg-gradient-to-tr from-indigo-500 to-pink-500 rounded-full flex items-center justify-center mx-auto mb-4 shadow-xl text-white text-4xl";
-                endIcon.innerHTML = '<i class="fa-solid fa-medal"></i>';
-                endTitle.textContent = "พยายามได้ดีมาก!";
-                endSubtitle.textContent = `ฝึกฝนบ่อยๆ จะเก่งขึ้นแน่นอน ลองเล่นใหม่อีกครั้งนะ`;
-                SoundFX.gameOver();
-            }
+            activeFruits.forEach(f => f.destroyCompletely());
+            activeFruits = [];
+            if (bowMesh) bowMesh.visible = false;
+
+            document.getElementById('final-score').innerText = gameState.score;
+            document.getElementById('final-correct').innerText = `${gameState.correctCount} ข้อ`;
+            document.getElementById('final-wrong').innerText = `${gameState.wrongCount} ครั้ง`;
+            document.getElementById('gameover-screen').classList.remove('hidden');
         }
+
+        function gameLoop() {
+            requestAnimationFrame(gameLoop);
+            if (gameState.status === 'PLAYING') {
+                activeFruits.forEach(fruit => fruit.update());
+                activeArrows.forEach(arrow => arrow.update());
+                activeArrows = activeArrows.filter(a => a.active);
+            }
+            renderer.render(scene, camera);
+        }
+
+        // --- INIT & EVENT LISTENERS ---
+        window.addEventListener('DOMContentLoaded', () => {
+            initThreeJS();
+            initMediaPipe();
+
+            document.getElementById('btn-start-game').addEventListener('click', () => {
+                sound.playButton();
+                startNewGame();
+            });
+
+            document.getElementById('btn-toggle-hands').addEventListener('click', () => {
+                sound.playToggle();
+                gameState.swapHands = !gameState.swapHands;
+                const txt = document.getElementById('txt-hands-mode');
+                if (gameState.swapHands) {
+                    txt.innerText = "สลับแล้ว";
+                    txt.className = "text-amber-300";
+                } else {
+                    txt.innerText = "ปกติ";
+                    txt.className = "text-emerald-400";
+                }
+            });
+
+            document.getElementById('btn-toggle-landmarks').addEventListener('click', () => {
+                sound.playToggle();
+                gameState.landmarksEnabled = !gameState.landmarksEnabled;
+                const txt = document.getElementById('txt-landmarks');
+                if (gameState.landmarksEnabled) {
+                    txt.innerText = "เปิด";
+                    txt.className = "text-emerald-400";
+                } else {
+                    txt.innerText = "ปิด";
+                    txt.className = "text-slate-400";
+                    hideLandmarks();
+                }
+            });
+
+            document.getElementById('btn-toggle-sound').addEventListener('click', () => {
+                gameState.soundEnabled = !gameState.soundEnabled;
+                if (gameState.soundEnabled) sound.playToggle();
+                const txt = document.getElementById('txt-sound');
+                if (gameState.soundEnabled) {
+                    txt.innerText = "เปิด";
+                    txt.className = "text-emerald-400";
+                } else {
+                    txt.innerText = "ปิด";
+                    txt.className = "text-slate-400";
+                }
+            });
+
+            document.getElementById('btn-restart').addEventListener('click', () => {
+                sound.playButton();
+                startNewGame();
+            });
+
+            document.getElementById('btn-play-again').addEventListener('click', () => {
+                sound.playButton();
+                startNewGame();
+            });
+
+            gameLoop();
+        });
     </script>
 </body>
 </html>

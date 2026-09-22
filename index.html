@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>เกม AR ฝึกพูดคำศัพท์คอมพิวเตอร์</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Font: Mitr -->
+    <link href="https://fonts.googleapis.com/css2?family=Mitr:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Canvas Confetti -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <!-- MediaPipe Face Mesh -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+
+    <style>
+        body {
+            font-family: 'Mitr', sans-serif;
+            touch-action: manipulation;
+        }
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+        }
+        .mirror {
+            transform: scaleX(-1);
+        }
+        @keyframes pulse-slow {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        .animate-pulse-slow {
+            animation: pulse-slow 2s infinite ease-in-out;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen overflow-hidden bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex flex-col items-center justify-center p-2 md:p-4">
+
+    <div id="start-screen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
+        <div class="glass-panel rounded-3xl p-6 md:p-10 max-w-lg w-full text-center shadow-2xl transform transition-all animate-pulse-slow">
+            <div class="w-20 h-20 bg-gradient-to-tr from-indigo-500 to-pink-500 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg text-white text-3xl">
+                <i class="fa-solid fa-laptop-code"></i>
+            </div>
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-800 mb-2">AR พูดคอมพิวเตอร์b</h1>
+            <p class="text-gray-600 text-sm md:text-base mb-6">ฝึกออกเสียงคำศัพท์คอมพิวเตอร์ สนุกกับเอฟเฟกต์ AR บนใบหน้า พร้อมสะสมคะแนนกันเลย!</p>
+            <div class="bg-blue-50 border border-blue-200 text-blue-700 text-xs md:text-sm rounded-xl p-3 mb-6 text-left">
+                <i class="fa-solid fa-circle-info mr-1"></i> ระบบจะขออนุญาตใช้งาน <strong>กล้อง (Camera)</strong> และ <strong>ไมโครโฟน (Microphone)</strong> เพื่อเริ่มเล่นเกม
+            </div>
+            <button id="start-btn" class="w-full py-4 bg-gradient-to-r from-indigo-600 to-pink-600 hover:from-indigo-700 hover:to-pink-700 text-white font-bold text-lg rounded-2xl shadow-xl transform transition active:scale-95 flex items-center justify-center gap-2">
+                <i class="fa-solid fa-play"></i> เริ่มต้นเล่นเกม
+            </button>
+        </div>
+    </div>
+
+    <div id="end-screen" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
+        <div class="glass-panel rounded-3xl p-6 md:p-10 max-w-lg w-full text-center shadow-2xl">
+            <div id="end-icon" class="w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-4 shadow-xl text-white text-4xl">
+                <i class="fa-solid fa-trophy"></i>
+            </div>
+            <h2 id="end-title" class="text-3xl md:text-4xl font-bold text-gray-800 mb-2">สรุปผลการเล่น</h2>
+            <p id="end-subtitle" class="text-gray-600 text-base mb-4">ยอดเยี่ยมมาก! คุณทำคะแนนได้</p>
+            <div class="text-5xl font-extrabold text-indigo-600 mb-6" id="final-score-display">8/10</div>
+            <button id="restart-btn" class="w-full py-4 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-bold text-lg rounded-2xl shadow-xl transform transition active:scale-95 flex items-center justify-center gap-2">
+                <i class="fa-solid fa-rotate-right"></i> เล่นใหม่อีกครั้ง
+            </button>
+        </div>
+    </div>
+
+    <div class="w-full h-full max-w-7xl max-h-[900px] flex flex-col md:flex-row gap-4 overflow-hidden rounded-3xl shadow-2xl border border-white/40 bg-white/20 backdrop-blur-md p-3 md:p-4">
+        
+        <!-- Left Side: Game UI & Controls -->
+        <div class="w-full md:w-1/2 flex flex-col justify-between glass-panel rounded-2xl p-4 md:p-6 shadow-lg relative overflow-hidden">
+            <!-- Header Info -->
+            <div class="flex items-center justify-between border-b border-gray-200/60 pb-3">
+                <div class="flex items-center gap-2">
+                    <span class="bg-indigo-100 text-indigo-700 font-bold px-3 py-1 rounded-full text-sm md:text-base shadow-sm">
+                        ข้อที่ <span id="current-q">1</span>/10
+                    </span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="bg-amber-100 text-amber-700 font-bold px-3 py-1 rounded-full text-sm md:text-base shadow-sm">
+                        <i class="fa-solid fa-star text-amber-500 mr-1"></i> คะแนน: <span id="total-score">0</span>
+                    </span>
+                </div>
+            </div>
+
+            <!-- Center Vocabulary Display -->
+            <div class="flex flex-col items-center justify-center my-auto py-4 text-center">
+                <div id="status-badge" class="mb-3 px-4 py-1.5 bg-gray-100 text-gray-600 rounded-full font-medium text-sm md:text-base shadow-inner transition-all">
+                    เตรียมตัว...
+                </div>
+                <h2 id="vocab-en" class="text-4xl md:text-6xl font-extrabold text-gray-800 tracking-wide drop-shadow-sm mb-2">COMPUTER</h2>
+                <p id="vocab-th" class="text-xl md:text-2xl font-medium text-gray-600 mb-4">(คอมพิวเตอร์)</p>
+                <div class="w-24 h-24 rounded-full bg-indigo-100 border-4 border-indigo-400 flex items-center justify-center text-3xl text-indigo-500 shadow-inner mb-2" id="mic-icon-container">
+                    <i id="mic-status-icon" class="fa-solid fa-microphone-slash"></i>
+                </div>
+                <p id="recognized-speech-text" class="text-sm text-gray-500 h-6 font-medium italic">พูดว่า...</p>
+            </div>
+
+            <!-- Bottom Accuracy Meter Bar -->
+            <div class="mt-auto">
+                <div class="flex justify-between items-center text-xs md:text-sm font-semibold text-gray-600 mb-1">
+                    <span>ระดับความแม่นยำ</span>
+                    <span id="accuracy-percent">0%</span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-4 overflow-hidden shadow-inner p-0.5">
+                    <div id="meter-bar" class="bg-gradient-to-r from-red-400 via-yellow-400 to-green-500 h-full rounded-full transition-all duration-300" style="width: 0%"></div>
+                </div>
+                <div id="feedback-message" class="text-center mt-3 font-semibold text-sm md:text-base text-gray-700 h-6">
+                    พร้อมแล้วลุยกันเลย!
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Side: AR Camera Viewport -->
+        <div class="w-full md:w-1/2 h-64 md:h-full relative rounded-2xl overflow-hidden bg-black shadow-lg border border-white/40 flex items-center justify-center">
+            <!-- Hidden Video element for MediaPipe input -->
+            <video id="webcam" class="absolute inset-0 w-full h-full object-cover mirror opacity-0 pointer-events-none" autoplay playsinline muted></video>
+            <!-- Canvas for AR Overlays and Video rendering -->
+            <canvas id="output_canvas" class="absolute inset-0 w-full h-full object-cover mirror"></canvas>
+            
+            <!-- Floating Camera badge -->
+            <div class="absolute top-4 right-4 bg-black/40 backdrop-blur-md text-white px-3 py-1 rounded-full text-xs flex items-center gap-1.5 border border-white/20">
+                <span class="w-2 h-2 rounded-full bg-green-400 animate-ping"></span> AR Camera Active
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Creator Tag Footer -->
+    <div class="absolute bottom-1 right-3 text-white/80 text-xs font-semibold drop-shadow-md pointer-events-none z-40">
+        ice 124
+    </div>
+
+    <script>
+        let audioCtx = null;
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        function playTone(freq, type, duration, delay = 0) {
+            try {
+                initAudio();
+                setTimeout(() => {
+                    if (!audioCtx) return;
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = type;
+                    osc.frequency.value = freq;
+                    gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + duration);
+                }, delay);
+            } catch (e) {
+                console.error("Audio error:", e);
+            }
+        }
+
+        const SoundFX = {
+            click: () => playTone(600, 'sine', 0.08),
+            tick: () => playTone(440, 'sine', 0.1),
+            go: () => {
+                playTone(523.25, 'triangle', 0.15, 0);
+                playTone(659.25, 'triangle', 0.15, 100);
+                playTone(783.99, 'triangle', 0.3, 200);
+            },
+            correct: () => {
+                playTone(587.33, 'sine', 0.1, 0);
+                playTone(880, 'sine', 0.25, 120);
+            },
+            wrong: () => {
+                playTone(180, 'sawtooth', 0.2, 0);
+                playTone(140, 'sawtooth', 0.3, 150);
+            },
+            warning: () => {
+                playTone(300, 'square', 0.15, 0);
+                playTone(300, 'square', 0.15, 200);
+            },
+            fanfare: () => {
+                const notes = [523.25, 587.33, 659.25, 698.46, 783.99, 880, 987.77, 1046.50];
+                notes.forEach((n, idx) => {
+                    playTone(n, 'triangle', 0.2, idx * 100);
+                });
+            },
+            gameOver: () => {
+                const notes = [400, 350, 300, 250];
+                notes.forEach((n, idx) => {
+                    playTone(n, 'sawtooth', 0.25, idx * 150);
+                });
+            }
+        };
+    </script>
+
+    <script>
+        // Computer Vocabulary Dataset (10 Computer & Tech Words)
+        const vocabularyList = [
+            { en: "COMPUTER", th: "คอมพิวเตอร์" },
+            { en: "MOUSE", th: "เมาส์" },
+            { en: "KEYBOARD", th: "คีย์บอร์ด" },
+            { en: "MONITOR", th: "จอภาพ" },
+            { en: "WIFI", th: "ไวไฟ" },
+            { en: "CODE", th: "โค้ด" },
+            { en: "SCREEN", th: "หน้าจอ" },
+            { en: "LAPTOP", th: "แล็ปท็อป" },
+            { en: "MOUSEPAD", th: "แผ่นรองเมาส์" },
+            { en: "INTERNET", th: "อินเทอร์เน็ต" }
+        ];
+
+        let currentQuestionIndex = 0;
+        let score = 0;
+        let isGameRunning = false;
+        let currentARState = 'none'; // 'none', 'crown', 'horns'
+        let faceLandmarksData = null;
+
+        // DOM Elements
+        const startScreen = document.getElementById('start-screen');
+        const endScreen = document.getElementById('end-screen');
+        const startBtn = document.getElementById('start-btn');
+        const restartBtn = document.getElementById('restart-btn');
+        const currentQEl = document.getElementById('current-q');
+        const totalScoreEl = document.getElementById('total-score');
+        const vocabEnEl = document.getElementById('vocab-en');
+        const vocabThEl = document.getElementById('vocab-th');
+        const statusBadge = document.getElementById('status-badge');
+        const micIconContainer = document.getElementById('mic-icon-container');
+        const micStatusIcon = document.getElementById('mic-status-icon');
+        const recognizedSpeechText = document.getElementById('recognized-speech-text');
+        const accuracyPercentEl = document.getElementById('accuracy-percent');
+        const meterBar = document.getElementById('meter-bar');
+        const feedbackMessage = document.getElementById('feedback-message');
+        const finalScoreDisplay = document.getElementById('final-score-display');
+        const endTitle = document.getElementById('end-title');
+        const endSubtitle = document.getElementById('end-subtitle');
+        const endIcon = document.getElementById('end-icon');
+
+        // Speech Recognition Setup
+        let recognition = null;
+        let speechSupported = true;
+        try {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (SpeechRecognition) {
+                recognition = new SpeechRecognition();
+                recognition.lang = 'en-US';
+                recognition.interimResults = true;
+                recognition.maxAlternatives = 1;
+            } else {
+                speechSupported = false;
+            }
+        } catch (e) {
+            speechSupported = false;
+        }
+
+        // String Similarity Algorithm (Levenshtein Distance / Percentage)
+        function calculateSimilarity(str1, str2) {
+            const s1 = str1.trim().toLowerCase();
+            const s2 = str2.trim().toLowerCase();
+            if (s1 === s2) return 100;
+            const longer = s1.length > s2.length ? s1 : s2;
+            const shorter = s1.length > s2.length ? s2 : s1;
+            if (longer.length === 0) return 100;
+            const editDistance = levenshteinDistance(longer, shorter);
+            return Math.round(((longer.length - editDistance) / longer.length) * 100);
+        }
+
+        function levenshteinDistance(s1, s2) {
+            const costs = [];
+            for (let i = 0; i <= s1.length; i++) {
+                let lastValue = i;
+                for (let j = 0; j <= s2.length; j++) {
+                    if (i === 0) {
+                        costs[j] = j;
+                    } else if (j > 0) {
+                        let newValue = costs[j - 1];
+                        if (s1.charAt(i - 1) !== s2.charAt(j - 1)) {
+                            newValue = Math.min(Math.min(newValue, lastValue), costs[j]) + 1;
+                        }
+                        costs[j - 1] = lastValue;
+                        lastValue = newValue;
+                    }
+                }
+                if (s1.length > 0) costs[s2.length] = lastValue;
+            }
+            return costs[s2.length];
+        }
+    </script>
+
+    <script>
+        const videoElement = document.getElementById('webcam');
+        const canvasElement = document.getElementById('output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+
+        function onResults(results) {
+            if (canvasElement.width !== canvasElement.clientWidth || canvasElement.height !== canvasElement.clientHeight) {
+                canvasElement.width = canvasElement.clientWidth;
+                canvasElement.height = canvasElement.clientHeight;
+            }
+
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+            if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+                faceLandmarksData = results.multiFaceLandmarks[0];
+                drawAROverlay(canvasCtx, faceLandmarksData, canvasElement.width, canvasElement.height, currentARState);
+            } else {
+                faceLandmarksData = null;
+            }
+
+            if (currentARState === 'horns') {
+                drawVignette(canvasCtx, canvasElement.width, canvasElement.height);
+            }
+
+            canvasCtx.restore();
+        }
+
+        function drawAROverlay(ctx, landmarks, width, height, state) {
+            if (state === 'none') return;
+
+            const forehead = landmarks[10];
+            const leftTemple = landmarks[234];
+            const rightTemple = landmarks[454];
+
+            if (!forehead || !leftTemple || !rightTemple) return;
+
+            const fx = forehead.x * width;
+            const fy = forehead.y * height;
+            
+            const tx1 = leftTemple.x * width;
+            const ty1 = leftTemple.y * height;
+            const tx2 = rightTemple.x * width;
+            const ty2 = rightTemple.y * height;
+            const headWidth = Math.hypot(tx2 - tx1, ty2 - ty1);
+
+            ctx.save();
+            if (state === 'crown') {
+                const crownWidth = headWidth * 1.1;
+                const crownHeight = crownWidth * 0.6;
+                const cx = fx - (crownWidth / 2);
+                const cy = fy - crownHeight - (headWidth * 0.2);
+
+                ctx.translate(cx + crownWidth/2, cy + crownHeight/2);
+                ctx.rotate(Math.sin(Date.now() / 200) * 0.05);
+                ctx.translate(-(cx + crownWidth/2), -(cy + crownHeight/2));
+
+                const grad = ctx.createLinearGradient(cx, cy, cx, cy + crownHeight);
+                grad.addColorStop(0, '#FFD700');
+                grad.addColorStop(1, '#FFA500');
+                ctx.fillStyle = grad;
+                ctx.strokeStyle = '#DAA520';
+                ctx.lineWidth = 3;
+
+                ctx.beginPath();
+                ctx.moveTo(cx, cy + crownHeight);
+                ctx.lineTo(cx + crownWidth * 0.1, cy + crownHeight * 0.3);
+                ctx.lineTo(cx + crownWidth * 0.3, cy + crownHeight * 0.7);
+                ctx.lineTo(cx + crownWidth * 0.5, cy + crownHeight * 0.1);
+                ctx.lineTo(cx + crownWidth * 0.7, cy + crownHeight * 0.7);
+                ctx.lineTo(cx + crownWidth * 0.9, cy + crownHeight * 0.3);
+                ctx.lineTo(cx + crownWidth, cy + crownHeight);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.fillStyle = '#FF0055';
+                ctx.beginPath();
+                ctx.arc(cx + crownWidth * 0.5, cy + crownHeight * 0.5, 6, 0, Math.PI * 2);
+                ctx.arc(cx + crownWidth * 0.3, cy + crownHeight * 0.7, 4, 0, Math.PI * 2);
+                ctx.arc(cx + crownWidth * 0.7, cy + crownHeight * 0.7, 4, 0, Math.PI * 2);
+                ctx.fill();
+
+            } else if (state === 'horns') {
+                const hornSize = headWidth * 0.4;
+                
+                const lhx = (leftTemple.x * width) - (hornSize * 0.2);
+                const lhy = (leftTemple.y * height) - (hornSize * 0.8);
+                drawSingleHorn(ctx, lhx, lhy, hornSize, true);
+
+                const rhx = (rightTemple.x * width) + (hornSize * 0.2);
+                const rhy = (rightTemple.y * height) - (hornSize * 0.8);
+                drawSingleHorn(ctx, rhx, rhy, hornSize, false);
+            }
+            ctx.restore();
+        }
+
+        function drawSingleHorn(ctx, x, y, size, isLeft) {
+            ctx.save();
+            ctx.translate(x, y);
+            if (isLeft) ctx.scale(-1, 1);
+
+            const grad = ctx.createLinearGradient(0, 0, 0, -size);
+            grad.addColorStop(0, '#8B0000');
+            grad.addColorStop(0.5, '#FF0000');
+            grad.addColorStop(1, '#FF4500');
+            ctx.fillStyle = grad;
+            ctx.strokeStyle = '#5A0000';
+            ctx.lineWidth = 2;
+
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.quadraticCurveTo(-size * 0.5, -size * 0.5, -size * 0.8, -size);
+            ctx.quadraticCurveTo(-size * 0.2, -size * 0.6, 0, 0);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        function drawVignette(ctx, width, height) {
+            const gradient = ctx.createRadialGradient(width/2, height/2, width * 0.2, width/2, height/2, width * 0.8);
+            gradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
+            gradient.addColorStop(1, 'rgba(100, 0, 0, 0.7)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+        }
+
+        const faceMesh = new FaceMesh({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+        });
+        faceMesh.setOptions({
+            maxNumFaces: 1,
+            refineLandmarks: true,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+        faceMesh.onResults(onResults);
+
+        let camera = null;
+        async function initCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 }, audio: true });
+                videoElement.srcObject = stream;
+                camera = new Camera(videoElement, {
+                    onFrame: async () => {
+                        await faceMesh.send({ image: videoElement });
+                    },
+                    width: 640,
+                    height: 480
+                });
+                await camera.start();
+            } catch (err) {
+                console.error("Camera/Mic error:", err);
+                alert("ไม่สามารถเข้าถึงกล้องหรือไมโครโฟนได้ กรุณาตรวจสอบการอนุญาตใช้งานในเบราว์เซอร์");
+            }
+        }
+    </script>
+
+    <script>
+        startBtn.addEventListener('click', async () => {
+            SoundFX.click();
+            await initCamera();
+            startScreen.classList.add('hidden');
+            startGame();
+        });
+
+        restartBtn.addEventListener('click', () => {
+            SoundFX.click();
+            endScreen.classList.add('hidden');
+            startGame();
+        });
+
+        function startGame() {
+            currentQuestionIndex = 0;
+            score = 0;
+            totalScoreEl.textContent = score;
+            playNextQuestion();
+        }
+
+        function playNextQuestion() {
+            if (currentQuestionIndex >= vocabularyList.length) {
+                endGame();
+                return;
+            }
+
+            currentARState = 'none';
+            const currentWordObj = vocabularyList[currentQuestionIndex];
+            currentQEl.textContent = currentQuestionIndex + 1;
+            vocabEnEl.textContent = currentWordObj.en;
+            vocabThEl.textContent = `(${currentWordObj.th})`;
+            recognizedSpeechText.textContent = "พูดว่า...";
+            accuracyPercentEl.textContent = "0%";
+            meterBar.style.width = "0%";
+            meterBar.className = "h-full rounded-full transition-all duration-300 bg-gradient-to-r from-red-400 via-yellow-400 to-green-500";
+
+            let count = 3;
+            statusBadge.className = "mb-3 px-4 py-1.5 bg-amber-100 text-amber-700 rounded-full font-medium text-sm md:text-base shadow-inner transition-all animate-pulse";
+            statusBadge.textContent = `เตรียมตัว... ${count}`;
+            SoundFX.tick();
+
+            const countInterval = setInterval(() => {
+                count--;
+                if (count > 0) {
+                    statusBadge.textContent = `เตรียมตัว... ${count}`;
+                    SoundFX.tick();
+                } else {
+                    clearInterval(countInterval);
+                    startListeningPhase(currentWordObj.en);
+                }
+            }, 1000);
+        }
+
+        function startListeningPhase(targetWord) {
+            statusBadge.className = "mb-3 px-4 py-1.5 bg-emerald-100 text-emerald-700 rounded-full font-bold text-sm md:text-base shadow-inner transition-all animate-pulse";
+            statusBadge.textContent = "พูดเลย!";
+            micIconContainer.className = "w-24 h-24 rounded-full bg-emerald-100 border-4 border-emerald-500 flex items-center justify-center text-3xl text-emerald-600 shadow-inner mb-2 animate-bounce";
+            micStatusIcon.className = "fa-solid fa-microphone";
+            feedbackMessage.textContent = "กำลังฟังเสียงของคุณอยู่...";
+            SoundFX.go();
+
+            let speechDetected = false;
+            let finalTranscript = "";
+            let recognitionTimeout = null;
+
+            if (speechSupported && recognition) {
+                try {
+                    recognition.onresult = (event) => {
+                        speechDetected = true;
+                        let interim = "";
+                        for (let i = event.resultIndex; i < event.results.length; ++i) {
+                            if (event.results[i].isFinal) {
+                                finalTranscript += event.results[i][0].transcript;
+                            } else {
+                                interim += event.results[i][0].transcript;
+                            }
+                        }
+                        const currentSpoken = finalTranscript || interim;
+                        recognizedSpeechText.textContent = `"${currentSpoken}"`;
+                    };
+
+                    recognition.onerror = (event) => {
+                        console.log("Speech recognition error", event.error);
+                    };
+
+                    recognition.start();
+                } catch (e) {
+                    console.log("Speech recognition start exception", e);
+                }
+            }
+
+            recognitionTimeout = setTimeout(() => {
+                if (speechSupported && recognition) {
+                    try { recognition.stop(); } catch(e){}
+                }
+
+                micIconContainer.className = "w-24 h-24 rounded-full bg-indigo-100 border-4 border-indigo-400 flex items-center justify-center text-3xl text-indigo-500 shadow-inner mb-2";
+                micStatusIcon.className = "fa-solid fa-microphone-slash";
+
+                evaluateSpeechResult(finalTranscript, targetWord);
+
+            }, 5000);
+        }
+
+        function evaluateSpeechResult(spokenText, targetWord) {
+            const similarity = calculateSimilarity(spokenText, targetWord);
+            accuracyPercentEl.textContent = `${similarity}%`;
+            meterBar.style.width = `${similarity}%`;
+
+            if (!spokenText || spokenText.trim() === "") {
+                statusBadge.className = "mb-3 px-4 py-1.5 bg-yellow-100 text-yellow-800 rounded-full font-bold text-sm md:text-base shadow-inner transition-all";
+                statusBadge.textContent = "ไม่ได้ยินเสียง!";
+                feedbackMessage.textContent = "ไม่เป็นไร ลองพูดให้ดังขึ้นในข้อถัดไปนะจ๊ะ";
+                SoundFX.warning();
+
+                setTimeout(() => {
+                    currentQuestionIndex++;
+                    playNextQuestion();
+                }, 3000);
+                return;
+            }
+
+            if (similarity >= 80) {
+                score++;
+                totalScoreEl.textContent = score;
+                currentARState = 'crown';
+                statusBadge.className = "mb-3 px-4 py-1.5 bg-green-100 text-green-700 rounded-full font-bold text-sm md:text-base shadow-inner transition-all";
+                statusBadge.textContent = "ผ่าน! เก่งมาก ✨";
+                feedbackMessage.textContent = `ยอดเยี่ยม! คุณออกเสียงได้ตรงกับคำว่า "${targetWord}"`;
+                meterBar.className = "h-full rounded-full transition-all duration-300 bg-green-500";
+                SoundFX.correct();
+
+                confetti({
+                    particleCount: 100,
+                    spread: 70,
+                    origin: { y: 0.6 }
+                });
+
+            } else {
+                currentARState = 'horns';
+                statusBadge.className = "mb-3 px-4 py-1.5 bg-red-100 text-red-700 rounded-full font-bold text-sm md:text-base shadow-inner transition-all";
+                statusBadge.textContent = "ไม่ผ่าน ❌";
+                feedbackMessage.textContent = `พยายามอีกนิดนะ! คำที่ถูกต้องคือ "${targetWord}"`;
+                meterBar.className = "h-full rounded-full transition-all duration-300 bg-red-500";
+                SoundFX.wrong();
+            }
+
+            setTimeout(() => {
+                currentQuestionIndex++;
+                playNextQuestion();
+            }, 3000);
+        }
+
+        function endGame() {
+            currentARState = 'none';
+            endScreen.classList.remove('hidden');
+            finalScoreDisplay.textContent = `${score}/10`;
+
+            if (score >= 8) {
+                endIcon.className = "w-24 h-24 bg-gradient-to-tr from-yellow-400 to-amber-500 rounded-full flex items-center justify-center mx-auto mb-4 shadow-xl text-white text-4xl";
+                endIcon.innerHTML = '<i class="fa-solid fa-trophy"></i>';
+                endTitle.textContent = "สุดยอดเซียนคอมพิวเตอร์!";
+                endSubtitle.textContent = `ยอดเยี่ยมมาก! คุณทำคะแนนได้ผ่านเกณฑ์ระดับสูง`;
+                SoundFX.fanfare();
+                confetti({
+                    particleCount: 200,
+                    spread: 100,
+                    origin: { y: 0.4 }
+                });
+            } else {
+                endIcon.className = "w-24 h-24 bg-gradient-to-tr from-indigo-500 to-pink-500 rounded-full flex items-center justify-center mx-auto mb-4 shadow-xl text-white text-4xl";
+                endIcon.innerHTML = '<i class="fa-solid fa-medal"></i>';
+                endTitle.textContent = "พยายามได้ดีมาก!";
+                endSubtitle.textContent = `ฝึกฝนบ่อยๆ จะเก่งขึ้นแน่นอน ลองเล่นใหม่อีกครั้งนะ`;
+                SoundFX.gameOver();
+            }
+        }
+    </script>
+</body>
+</html>
